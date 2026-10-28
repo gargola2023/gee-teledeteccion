@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GEE Series Espectrales</title>
+<meta name="description" content="Series de tiempo de índices espectrales (Landsat y Sentinel-2) con Google Earth Engine para puntos y polígonos cargados desde Shapefile, KML, GeoJSON, GeoPackage, GPX o CSV.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f6f8; --panel: #ffffff; --text: #1b2330; --muted: #5f6b7a; --border: #dde3ea;
+    --accent: #0f6cbd; --accent-text: #ffffff; --input: #f8fafc; --grid: #e7ebf0;
+    --ok: #2e7d32; --warn: #b26a00; --err: #c62828; --neutro: #8a94a3;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f141a; --panel: #161d26; --text: #e6edf3; --muted: #9aa7b4; --border: #2a3542;
+      --accent: #4ea1ff; --accent-text: #0b1220; --input: #1c2530; --grid: #243040; --neutro: #6b7684;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f141a; --panel: #161d26; --text: #e6edf3; --muted: #9aa7b4; --border: #2a3542;
+    --accent: #4ea1ff; --accent-text: #0b1220; --input: #1c2530; --grid: #243040; --neutro: #6b7684;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { display: flex; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, sans-serif; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Panel lateral ---------- */
+  #panel { width: 370px; flex-shrink: 0; height: 100vh; overflow-y: auto; background: var(--panel);
+           border-right: 1px solid var(--border); padding: 16px 16px 24px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  header p { margin: 2px 0 6px; color: var(--muted); font-size: 12.5px; }
+  nav { font-size: 12.5px; margin-bottom: 12px; }
+  nav a { color: var(--accent); text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+
+  section { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; color: var(--muted); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+                  background: var(--input); color: var(--text); font: inherit; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .fila { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+  button { font: inherit; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 8px 12px;
+           border: 1px solid var(--border); background: var(--input); color: var(--text); }
+  button:hover { filter: brightness(.97); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primario { background: var(--accent); color: var(--accent-text); border-color: var(--accent); width: 100%; padding: 10px; }
+  .botones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .botones button { flex: 1; font-size: 12.5px; padding: 7px 8px; }
+
+  .estado { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+  .estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .estado.ok::before { background: var(--ok); } .estado.warn::before { background: var(--warn); } .estado.err::before { background: var(--err); }
+
+  #zona-carga { border: 1.5px dashed var(--border); border-radius: 9px; padding: 14px 10px; text-align: center;
+                font-size: 12.5px; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; }
+  #zona-carga strong { color: var(--text); }
+  #zona-carga.sobre { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+  #lista-elementos { max-height: 210px; overflow-y: auto; margin-top: 8px; border-top: 1px solid var(--border); }
+  .elem { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .elem input { width: auto; margin: 0; }
+  .elem .sw { width: 14px; height: 4px; border-radius: 2px; background: var(--neutro); flex-shrink: 0; }
+  .elem .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .elem .tipo { color: var(--muted); font-size: 11px; }
+  .contador { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+  .indices { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 4px; }
+  .indices label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-size: 12.5px; cursor: pointer; }
+  .indices label small { color: var(--muted); }
+  .indices input { width: auto; margin: 0; }
+
+  #progreso { height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; margin-top: 10px; }
+  #progreso div { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  #log { font-size: 11.5px; color: var(--muted); max-height: 140px; overflow-y: auto;
+         border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 8px; }
+  #log div { margin-bottom: 3px; }
+  #log .err { color: var(--err); } #log .warn { color: var(--warn); } #log .ok { color: var(--ok); }
+
+  /* ---------- Área principal ---------- */
+  main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: column; }
+  #map { height: 42vh; min-height: 260px; flex-shrink: 0; }
+  #resultados { flex: 1; overflow-y: auto; padding: 14px 18px 24px; }
+
+  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .tabs button { border: none; border-radius: 0; background: transparent; padding: 7px 12px; font-size: 12.5px; color: var(--muted); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+  .barra select { width: auto; padding: 6px 8px; font-size: 12.5px; }
+  .barra .espacio { flex: 1; }
+  .barra button.sec { padding: 6px 10px; font-size: 12.5px; }
+
+  .resumen { font-size: 12.5px; color: var(--muted); margin: -4px 0 12px; }
+
+  .leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; margin-bottom: 10px; }
+  .leyenda span { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+  .leyenda i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  .grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+  .tarjeta { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 8px; }
+  .tarjeta h3 { margin: 0 0 2px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .tarjeta h3 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .tarjeta h3 button { margin-left: auto; padding: 3px 8px; font-size: 11.5px; font-weight: 500; }
+  .tarjeta .lienzo { position: relative; height: 270px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--panel);
+          border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td { font-variant-numeric: tabular-nums; }
+  .tabla-envoltura { overflow-x: auto; }
+
+  .vacio { color: var(--muted); text-align: center; padding: 40px 10px; font-size: 13.5px; }
+  .vacio strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 15px; }
+
+  .leaflet-container { font: 12px Inter, system-ui, sans-serif; }
+
+  @media (max-width: 860px) {
+    body { flex-direction: column; height: auto; }
+    main { order: -1; height: auto; }
+    #map { height: 48vh; }
+    #resultados { overflow: visible; padding: 12px 16px 20px; }
+    #panel { width: 100%; height: auto; border-right: none; border-top: 1px solid var(--border); padding: 16px; }
+    .grilla { grid-template-columns: 1fr; }
+    .tarjeta .lienzo { height: 240px; }
+  }
+</style>
+</head>
+<body>
+
+<aside id="panel">
+  <header>
+    <h1>Series de tiempo espectrales</h1>
+    <p>Google Earth Engine · Landsat 5/7/8/9 y Sentinel-2</p>
+  </header>
+  <nav><a href="index.html">← Comparador swipe</a></nav>
+
+  <!-- 1. Conexión -->
+  <section>
+    <h2>1 · Conexión a Earth Engine</h2>
+    <div id="bloque-cliente">
+      <label for="client-id">OAuth Client ID</label>
+      <input id="client-id" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off">
+    </div>
+    <label for="proyecto">Proyecto Cloud registrado en Earth Engine</label>
+    <input id="proyecto" placeholder="mi-proyecto-gee" autocomplete="off">
+    <div class="botones">
+      <button id="btn-conectar">Conectar</button>
+      <button id="btn-login" hidden>Iniciar sesión con Google</button>
+    </div>
+    <div id="estado" class="estado">Sin conectar</div>
+  </section>
+
+  <!-- 2. Elementos -->
+  <section>
+    <h2>2 · Puntos y polígonos</h2>
+    <div id="zona-carga" role="button" tabindex="0">
+      <strong>Arrastra archivos aquí o haz clic</strong><br>
+      Shapefile (.zip o .shp+.dbf+.prj), KML, KMZ, GeoJSON, GeoPackage, GPX, CSV
+    </div>
+    <input type="file" id="archivos" multiple hidden
+           accept=".zip,.shp,.dbf,.prj,.cpg,.shx,.kml,.kmz,.geojson,.json,.gpkg,.gpx,.csv,.txt">
+    <label for="epsg">Sistema de referencia si el archivo no lo trae</label>
+    <select id="epsg"></select>
+    <div class="fila">
+      <div>
+        <label for="campo-nombre">Campo de nombre</label>
+        <select id="campo-nombre"><option value="">(automático)</option></select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button id="btn-limpiar" style="width:100%">Limpiar todo</button>
+      </div>
+    </div>
+    <div class="hint">También puedes dibujar puntos y polígonos con las herramientas del mapa. Marca hasta 8 elementos para verlos en los gráficos.</div>
+    <div id="lista-elementos"></div>
+    <div class="contador" id="contador"></div>
+  </section>
+
+  <!-- 3. Parámetros -->
+  <section>
+    <h2>3 · Sensor, período e índices</h2>
+    <label for="sensor">Sensor</label>
+    <select id="sensor"></select>
+    <div class="fila">
+      <div><label for="f-ini">Desde</label><input type="date" id="f-ini"></div>
+      <div><label for="f-fin">Hasta</label><input type="date" id="f-fin"></div>
+    </div>
+    <div class="fila">
+      <div><label for="nubes">Nubes máx. escena (%)</label><input type="number" id="nubes" min="0" max="100" step="5" value="70"></div>
+      <div>
+        <label for="reductor">Polígonos: estadístico</label>
+        <select id="reductor">
+          <option value="mean">Media</option>
+          <option value="median">Mediana</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint" id="disp-sensor"></div>
+    <label>Índices espectrales (máx. 8)</label>
+    <div class="indices" id="indices"></div>
+  </section>
+
+  <button id="btn-calcular" class="primario" disabled>Calcular series de tiempo</button>
+  <div id="progreso" hidden><div></div></div>
+  <div id="log"></div>
+</aside>
+
+<main>
+  <div id="map"></div>
+  <div id="resultados">
+    <div class="barra" id="barra" hidden>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-vista="indice" aria-selected="true">Por índice</button>
+        <button role="tab" data-vista="elemento" aria-selected="false">Por elemento</button>
+        <button role="tab" data-vista="tabla" aria-selected="false">Tabla</button>
+      </div>
+      <select id="agregacion" title="Agregación temporal">
+        <option value="obs">Cada observación</option>
+        <option value="mes">Promedio mensual</option>
+        <option value="anio">Promedio anual</option>
+        <option value="clim">Perfil estacional (mes del año)</option>
+      </select>
+      <select id="sel-elemento" hidden title="Elemento"></select>
+      <span class="espacio"></span>
+      <button class="sec" id="btn-csv">Descargar CSV</button>
+    </div>
+    <div class="resumen" id="resumen"></div>
+    <div id="vista">
+      <div class="vacio">
+        <strong>Aún no hay series calculadas</strong>
+        Conecta Earth Engine, carga o dibuja tus puntos y polígonos, elige el sensor, el período y los índices, y pulsa «Calcular series de tiempo».
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@google/earthengine@1.7.43/build/ee_api_js.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.15.0/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/shpjs@6.1.0/dist/shp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/sql-wasm.js"></script>
+<script src="js/lectores.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   Configuración (config.js define window.GEE_CONFIG)
+   ===================================================================== */
+const CONFIG = Object.assign({ CLIENT_ID: '', PROJECT: '' }, window.GEE_CONFIG || {});
+const URL_SQL = 'https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/';
+const MAX_ELEMENTOS = 300;
+const MAX_VISIBLES = 8;
+const MAX_INDICES = 8;
+const LIMITE_FILAS = 3500;   // filas por petición a Earth Engine (límite ~5000)
+const CONCURRENCIA = 3;
+
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin storage */ } }
+};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+const HOY = new Date().toISOString().slice(0, 10);
+
+function log(msg, tipo) {
+  const d = document.createElement('div');
+  if (tipo) d.className = tipo;
+  d.textContent = new Date().toLocaleTimeString('es-CL', { hour12: false }) + ' · ' + msg;
+  $('log').prepend(d);
+}
+function setEstado(texto, tipo) { const e = $('estado'); e.textContent = texto; e.className = 'estado' + (tipo ? ' ' + tipo : ''); }
+
+/* =====================================================================
+   Sensores e índices
+   ===================================================================== */
+const BANDAS = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'];
+const B_L57 = ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'];
+const B_L89 = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'];
+const B_S2 = ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'];
+
+const SENSORES = {
+  L5: { nombre: 'Landsat 5 TM', id: 'LANDSAT/LT05/C02/T1_L2', bandas: B_L57, tipo: 'landsat', ini: '1984-03-16', fin: '2012-05-05', escala: 30 },
+  L7: { nombre: 'Landsat 7 ETM+', id: 'LANDSAT/LE07/C02/T1_L2', bandas: B_L57, tipo: 'landsat', ini: '1999-05-28', fin: HOY, escala: 30, nota: 'Franjas sin datos (SLC-off) desde jun-2003.' },
+  L8: { nombre: 'Landsat 8 OLI', id: 'LANDSAT/LC08/C02/T1_L2', bandas: B_L89, tipo: 'landsat', ini: '2013-03-18', fin: HOY, escala: 30 },
+  L9: { nombre: 'Landsat 9 OLI-2', id: 'LANDSAT/LC09/C02/T1_L2', bandas: B_L89, tipo: 'landsat', ini: '2021-10-31', fin: HOY, escala: 30 },
+  S2: { nombre: 'Sentinel-2 L2A (10 m)', id: 'COPERNICUS/S2_SR_HARMONIZED', bandas: B_S2, tipo: 's2', ini: '2017-03-28', fin: HOY, escala: 10 },
+  LC: { nombre: 'Landsat 5–9 combinado (30 m)', combinado: ['L5', 'L7', 'L8', 'L9'], tipo: 'landsat', ini: '1984-03-16', fin: HOY, escala: 30,
+        nota: 'Une Landsat 5, 7, 8 y 9 en una sola serie larga.' }
+};
+
+// Variables: b=azul, g=verde, r=rojo, n=NIR, s1=SWIR1, s2=SWIR2 (reflectancia 0–1)
+const INDICES = {
+  NDVI:  { desc: 'Vegetación',         expr: '(n - r) / (n + r)' },
+  EVI:   { desc: 'Vegetación densa',   expr: '2.5 * (n - r) / (n + 6 * r - 7.5 * b + 1)' },
+  SAVI:  { desc: 'Veg. suelo expuesto', expr: '1.5 * (n - r) / (n + r + 0.5)' },
+  GNDVI: { desc: 'Clorofila',          expr: '(n - g) / (n + g)' },
+  NDWI:  { desc: 'Agua (McFeeters)',   expr: '(g - n) / (g + n)' },
+  MNDWI: { desc: 'Agua (Xu)',          expr: '(g - s1) / (g + s1)' },
+  NDMI:  { desc: 'Humedad vegetación', expr: '(n - s1) / (n + s1)' },
+  NBR:   { desc: 'Área quemada',       expr: '(n - s2) / (n + s2)' },
+  NDBI:  { desc: 'Construido',         expr: '(s1 - n) / (s1 + n)' },
+  BSI:   { desc: 'Suelo desnudo',      expr: '((s1 + r) - (n + b)) / ((s1 + r) + (n + b))' }
+};
+
+/* =====================================================================
+   Colores: 8 ranuras fijas; el color sigue a la entidad, nunca al orden
+   ===================================================================== */
+const color = (slot) => getComputedStyle(document.documentElement).getPropertyValue('--s' + (slot + 1)).trim();
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function asignarSlot(mapa, clave) {
+  if (mapa.has(clave)) return true;
+  const usados = new Set(mapa.values());
+  for (let i = 0; i < MAX_VISIBLES; i++) if (!usados.has(i)) { mapa.set(clave, i); return true; }
+  return false;
+}
+const slotsElem = new Map();   // fid → ranura (elementos visibles en gráficos)
+const slotsIdx = new Map();    // índice → ranura
+
+/* =====================================================================
+   Controles del panel
+   ===================================================================== */
+Lectores.EPSG_OPCIONES.forEach(([v, t]) => $('epsg').add(new Option(t, v)));
+Object.entries(SENSORES).forEach(([k, s]) => $('sensor').add(new Option(s.nombre, k)));
+$('sensor').value = ls.get('ss_sensor') || 'S2';
+$('f-ini').value = ls.get('ss_ini') || '2019-01-01';
+$('f-fin').value = ls.get('ss_fin') || HOY;
+
+function actualizarSensor() {
+  const s = SENSORES[$('sensor').value];
+  $('f-ini').min = $('f-fin').min = s.ini;
+  $('f-ini').max = $('f-fin').max = s.fin;
+  $('disp-sensor').textContent = `Disponible: ${s.ini} a ${s.fin === HOY ? 'hoy' : s.fin} · píxel ${s.escala} m. ${s.nota || ''}`;
+  ls.set('ss_sensor', $('sensor').value);
+}
+$('sensor').addEventListener('change', actualizarSensor);
+['f-ini', 'f-fin'].forEach((id) => $(id).addEventListener('change', () => ls.set('ss_' + id.slice(2), $(id).value)));
+actualizarSensor();
+
+let indicesGuardados = [];
+try { indicesGuardados = JSON.parse(ls.get('ss_indices') || '[]'); } catch (e) { indicesGuardados = []; }
+if (!indicesGuardados.length) indicesGuardados = ['NDVI', 'NDWI', 'NDMI'];
+Object.entries(INDICES).forEach(([k, d]) => {
+  const l = document.createElement('label');
+  l.innerHTML = `<input type="checkbox" value="${k}"> ${k} <small>${d.desc}</small>`;
+  const cb = l.querySelector('input');
+  cb.checked = indicesGuardados.includes(k);
+  if (cb.checked) asignarSlot(slotsIdx, k);
+  cb.addEventListener('change', () => {
+    if (cb.checked) asignarSlot(slotsIdx, k); else slotsIdx.delete(k);
+    limitarIndices();
+    ls.set('ss_indices', JSON.stringify(indicesSeleccionados()));
+  });
+  $('indices').appendChild(l);
+});
+const indicesSeleccionados = () => Array.from(document.querySelectorAll('#indices input:checked')).map((c) => c.value);
+function limitarIndices() {
+  const lleno = indicesSeleccionados().length >= MAX_INDICES;
+  document.querySelectorAll('#indices input').forEach((c) => { c.disabled = !c.checked && lleno; });
+}
+limitarIndices();
+
+/* =====================================================================
+   Mapa
+   ===================================================================== */
+const map = L.map('map').setView([-33.84, -70.925], 11);
+const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, attribution: 'Imágenes © Esri'
+}).addTo(map);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+L.control.layers({ 'Esri satélite': esri, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(map);
+L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+
+L.drawLocal.draw.toolbar.buttons.polygon = 'Dibujar polígono';
+L.drawLocal.draw.toolbar.buttons.rectangle = 'Dibujar rectángulo';
+L.drawLocal.draw.toolbar.buttons.circlemarker = 'Agregar punto';
+L.drawLocal.draw.toolbar.actions.text = 'Cancelar';
+L.drawLocal.draw.toolbar.finish.text = 'Terminar';
+L.drawLocal.draw.toolbar.undo.text = 'Borrar último vértice';
+L.drawLocal.draw.handlers.circlemarker.tooltip.start = 'Haz clic en el mapa para agregar un punto.';
+
+const capaElementos = L.featureGroup().addTo(map);
+const dibujo = new L.Control.Draw({
+  position: 'topleft',
+  draw: {
+    circlemarker: { radius: 7 },
+    polygon: { allowIntersection: false, showArea: false },
+    rectangle: { showArea: false },
+    polyline: false, circle: false, marker: false
+  }
+});
+map.addControl(dibujo);
+
+/* =====================================================================
+   Elementos (puntos / polígonos)
+   ===================================================================== */
+let elementos = [];      // { fid, props, geom, tipo, origen, capa }
+let siguienteFid = 1;
+let contadorDibujo = { punto: 0, poligono: 0 };
+let elementoActivo = null;
+
+const tipoGeom = (g) => (/Point/.test(g.type) ? 'punto' : /Polygon/.test(g.type) ? 'polígono' : 'línea');
+
+function nombreDe(e) {
+  const campo = $('campo-nombre').value;
+  if (campo && e.props[campo] != null && e.props[campo] !== '') return String(e.props[campo]);
+  if (e.props._nombre) return e.props._nombre;
+  const auto = Object.keys(e.props).find((k) => /^(name|nombre|nom|nom_.*|id|codigo|cod|label|etiqueta)$/i.test(k)
+    && e.props[k] != null && e.props[k] !== '');
+  return auto ? String(e.props[auto]) : `Elemento ${e.fid}`;
+}
+
+function estiloElemento(e) {
+  const slot = slotsElem.get(e.fid);
+  const c = slot != null ? color(slot) : css('--neutro');
+  const activo = elementoActivo === e.fid;
+  return { color: c, weight: activo ? 4 : 2.5, opacity: 1, fillColor: c, fillOpacity: e.tipo === 'punto' ? 0.9 : 0.12 };
+}
+
+function crearCapa(e) {
+  const capa = L.geoJSON({ type: 'Feature', geometry: e.geom, properties: {} }, {
+    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7 }),
+    style: () => estiloElemento(e)
+  });
+  capa.bindTooltip(() => esc(nombreDe(e)), { sticky: true });
+  capa.on('click', () => {
+    if (!slotsElem.has(e.fid)) alternarVisible(e.fid, true);
+    elementoActivo = e.fid;
+    if (resultado) { $('sel-elemento').value = String(e.fid); renderVista(); }
+    refrescarEstilos();
+    renderLista();
+  });
+  e.capa = capa;
+  capaElementos.addLayer(capa);
+}
+
+function refrescarEstilos() {
+  elementos.forEach((e) => {
+    e.capa.setStyle(estiloElemento(e));
+    if (slotsElem.has(e.fid) && e.capa.bringToFront) e.capa.bringToFront();
+  });
+}
+
+function agregarElementos(features, origen) {
+  let agregados = 0, omitidos = 0;
+  for (const f of features) {
+    if (!f.geometry) { omitidos++; continue; }
+    if (elementos.length >= MAX_ELEMENTOS) { omitidos++; continue; }
+    const e = { fid: siguienteFid++, props: f.properties || {}, geom: f.geometry, tipo: tipoGeom(f.geometry), origen };
+    elementos.push(e);
+    crearCapa(e);
+    if (slotsElem.size < MAX_VISIBLES) asignarSlot(slotsElem, e.fid);
+    agregados++;
+  }
+  if (omitidos) log(`${omitidos} elemento(s) omitidos (sin geometría o sobre el máximo de ${MAX_ELEMENTOS}).`, 'warn');
+  actualizarCampos();
+  refrescarEstilos();
+  renderLista();
+  return agregados;
+}
+
+function alternarVisible(fid, visible) {
+  if (visible) {
+    if (!asignarSlot(slotsElem, fid)) { log(`Máximo ${MAX_VISIBLES} elementos visibles en los gráficos.`, 'warn'); return false; }
+  } else slotsElem.delete(fid);
+  refrescarEstilos();
+  renderLista();
+  if (resultado) renderVista();
+  return true;
+}
+
+function actualizarCampos() {
+  const sel = $('campo-nombre');
+  const actual = sel.value;
+  const campos = new Set();
+  elementos.forEach((e) => Object.keys(e.props).forEach((k) => { if (!k.startsWith('_')) campos.add(k); }));
+  sel.innerHTML = '<option value="">(automático)</option>';
+  [...campos].sort().forEach((c) => sel.add(new Option(c, c)));
+  sel.value = campos.has(actual) ? actual : '';
+}
+$('campo-nombre').addEventListener('change', () => { renderLista(); if (resultado) renderVista(); });
+
+function renderLista() {
+  const cont = $('lista-elementos');
+  cont.innerHTML = '';
+  elementos.forEach((e) => {
+    const slot = slotsElem.get(e.fid);
+    const div = document.createElement('div');
+    div.className = 'elem';
+    div.innerHTML = `<input type="checkbox" ${slot != null ? 'checked' : ''} aria-label="Mostrar en gráficos">
+      <span class="sw" style="background:${slot != null ? color(slot) : 'var(--neutro)'}"></span>
+      <span class="nom" title="Ir al elemento">${esc(nombreDe(e))}</span>
+      <span class="tipo">${e.tipo}</span>`;
+    div.querySelector('input').addEventListener('change', (ev) => {
+      if (!alternarVisible(e.fid, ev.target.checked)) ev.target.checked = false;
+    });
+    div.querySelector('.nom').addEventListener('click', () => {
+      const b = e.capa.getBounds();
+      if (e.tipo === 'punto') map.setView(b.getCenter(), Math.max(map.getZoom(), 14));
+      else map.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
+      e.capa.openTooltip();
+    });
+    cont.appendChild(div);
+  });
+  const n = elementos.length;
+  $('contador').textContent = n ? `${n} elemento${n > 1 ? 's' : ''} · ${slotsElem.size} de ${MAX_VISIBLES} visibles en gráficos` : '';
+}
+
+map.on(L.Draw.Event.CREATED, (ev) => {
+  const geo = ev.layer.toGeoJSON();
+  const esPunto = geo.geometry.type === 'Point';
+  const n = esPunto ? ++contadorDibujo.punto : ++contadorDibujo.poligono;
+  geo.properties = { _nombre: esPunto ? `Punto ${n}` : `Polígono ${n}` };
+  agregarElementos([geo], 'dibujo');
+});
+
+$('btn-limpiar').onclick = () => {
+  elementos = []; slotsElem.clear(); capaElementos.clearLayers(); elementoActivo = null;
+  contadorDibujo = { punto: 0, poligono: 0 };
+  actualizarCampos(); renderLista();
+  log('Elementos eliminados.');
+};
+
+/* ---------- Carga de archivos ---------- */
+async function cargarArchivos(lista) {
+  if (!lista || !lista.length) return;
+  try {
+    const res = await Lectores.leerArchivos(lista, { epsg: $('epsg').value, urlSql: URL_SQL });
+    let total = 0;
+    res.forEach((r) => {
+      const n = agregarElementos(r.fc.features, r.nombre);
+      total += n;
+      log(`${r.nombre}: ${n} elemento(s) cargado(s).`, 'ok');
+    });
+    if (total) map.fitBounds(capaElementos.getBounds(), { padding: [30, 30], maxZoom: 15 });
+  } catch (err) {
+    log(err.message || String(err), 'err');
+    if (err.codigo === 'PROYECTADO') $('epsg').focus();
+  }
+}
+const zona = $('zona-carga');
+zona.onclick = () => $('archivos').click();
+zona.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('archivos').click(); } };
+$('archivos').onchange = (e) => { cargarArchivos(e.target.files); e.target.value = ''; };
+['dragenter', 'dragover'].forEach((t) => zona.addEventListener(t, (e) => { e.preventDefault(); zona.classList.add('sobre'); }));
+['dragleave', 'drop'].forEach((t) => zona.addEventListener(t, (e) => { e.preventDefault(); zona.classList.remove('sobre'); }));
+zona.addEventListener('drop', (e) => cargarArchivos(e.dataTransfer.files));
+// Permitir soltar archivos también sobre el mapa
+['dragover', 'drop'].forEach((t) => $('map').addEventListener(t, (e) => {
+  e.preventDefault();
+  if (t === 'drop') cargarArchivos(e.dataTransfer.files);
+}));
+
+/* =====================================================================
+   Earth Engine: autenticación
+   ===================================================================== */
+let conectado = false;
+$('client-id').value = CONFIG.CLIENT_ID || ls.get('gee_client_id') || '';
+$('proyecto').value = ls.get('gee_project') || CONFIG.PROJECT || '';
+if (CONFIG.CLIENT_ID) $('bloque-cliente').hidden = true;
+
+function fallo(err) {
+  setEstado('Error de conexión', 'err');
+  log('Error de autenticación: ' + ((err && (err.message || err)) || 'desconocido'), 'err');
+}
+function inicializar() {
+  const proyecto = $('proyecto').value.trim();
+  setEstado('Inicializando Earth Engine…', 'warn');
+  ee.initialize(null, null, () => {
+    conectado = true;
+    $('btn-login').hidden = true;
+    $('btn-calcular').disabled = false;
+    setEstado('Conectado · ' + proyecto, 'ok');
+    log('Earth Engine listo.', 'ok');
+  }, fallo, null, proyecto);
+}
+function conectar() {
+  const clientId = $('client-id').value.trim();
+  const proyecto = $('proyecto').value.trim();
+  if (!clientId || !proyecto) { setEstado('Falta Client ID o proyecto', 'err'); return; }
+  ls.set('gee_client_id', clientId);
+  ls.set('gee_project', proyecto);
+  setEstado('Verificando sesión…', 'warn');
+  ee.data.authenticateViaOauth(clientId, inicializar, fallo, null, () => {
+    $('btn-login').hidden = false;
+    setEstado('Inicia sesión con tu cuenta Google', 'warn');
+  });
+}
+$('btn-conectar').onclick = conectar;
+$('btn-login').onclick = () => ee.data.authenticateViaPopup(inicializar, fallo);
+if ($('client-id').value && $('proyecto').value) conectar();
+
+/* =====================================================================
+   Earth Engine: procesamiento
+   ===================================================================== */
+const evaluar = (obj) => new Promise((res, rej) => obj.evaluate((r, e) => (e ? rej(new Error(e)) : res(r))));
+
+function preparar(img, s) {
+  let sr;
+  if (s.tipo === 's2') {
+    const scl = img.select('SCL'); // 3 sombra, 8–9 nubes, 10 cirros, 11 nieve
+    const ok = scl.neq(3).and(scl.neq(8)).and(scl.neq(9)).and(scl.neq(10)).and(scl.neq(11));
+    sr = img.select(s.bandas, BANDAS).divide(10000).updateMask(ok);
+  } else {
+    const qa = img.select('QA_PIXEL'); // bits 0–5: relleno, nube dilatada, cirros, nube, sombra, nieve
+    sr = img.select(s.bandas, BANDAS).multiply(0.0000275).add(-0.2)
+      .updateMask(qa.bitwiseAnd(63).eq(0))
+      .updateMask(img.select('QA_RADSAT').eq(0));
+  }
+  return sr;
+}
+
+function calcularIndices(sr, lista) {
+  const v = { b: sr.select('blue'), g: sr.select('green'), r: sr.select('red'),
+              n: sr.select('nir'), s1: sr.select('swir1'), s2: sr.select('swir2') };
+  return ee.Image.cat(lista.map((k) => sr.expression(INDICES[k].expr, v).rename(k)));
+}
+
+function construirColeccion(cfg, geomTotal) {
+  const s = SENSORES[cfg.sensor];
+  const claves = s.combinado || [cfg.sensor];
+  let col = null;
+  claves.forEach((k) => {
+    const si = SENSORES[k];
+    const prop = si.tipo === 's2' ? 'CLOUDY_PIXEL_PERCENTAGE' : 'CLOUD_COVER';
+    const c = ee.ImageCollection(si.id)
+      .filterBounds(geomTotal)
+      .filterDate(cfg.ini, cfg.finExcl)
+      .filter(ee.Filter.lte(prop, cfg.nubes))
+      .map((img) => calcularIndices(preparar(img, si), cfg.indices)
+        .set({ 'system:time_start': img.get('system:time_start'), sensor: k, yr: img.date().get('year') }));
+    col = col ? col.merge(c) : c;
+  });
+  return col;
+}
+
+function geomEE(e) { return ee.Geometry(e.geomEnvio || e.geom, null, false); }
+
+function prepararGeometrias() {
+  // Simplifica polígonos muy pesados para no exceder el tamaño de la petición
+  const total = elementos.reduce((n, e) => n + Lectores.contarVertices(e.geom), 0);
+  let tol = 0;
+  if (total > 20000) tol = 0.00005;      // ~5 m
+  if (total > 80000) tol = 0.0002;       // ~20 m
+  elementos.forEach((e) => { e.geomEnvio = tol && e.tipo !== 'punto' ? Lectores.simplificar(e.geom, tol) : null; });
+  if (tol) log(`Geometrías con ${total.toLocaleString('es-CL')} vértices: se simplificaron (~${Math.round(tol * 1e5)} m) para el envío.`, 'warn');
+}
+
+function fcDe(lista) {
+  return ee.FeatureCollection(lista.map((e) => ee.Feature(geomEE(e), { fid: e.fid })));
+}
+
+function trabajoEE(col, cfg, tr) {
+  const fc = fcDe(tr.elems);
+  let red = cfg.reductor === 'median' ? ee.Reducer.median() : ee.Reducer.mean();
+  if (cfg.indices.length === 1) red = red.setOutputs(cfg.indices);
+  const props = ['fid'].concat(cfg.indices);
+  return col.filterDate(tr.ini, tr.fin).map((img) => img
+    .reduceRegions({ collection: fc, reducer: red, scale: cfg.escala, tileScale: 4 })
+    .select(props, null, false)
+    .map((f) => f.set({ t: img.get('system:time_start'), s: img.get('sensor') }))
+  ).flatten().filter(ee.Filter.notNull([cfg.indices[0]]));
+}
+
+const fechaISO = (d) => d.toISOString().slice(0, 10);
+function partirPorMes(tr) {
+  const out = [];
+  let d = new Date(tr.ini + 'T00:00:00Z');
+  const fin = new Date(tr.fin + 'T00:00:00Z');
+  while (d < fin) {
+    const sig = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    out.push({ ini: fechaISO(d), fin: fechaISO(sig < fin ? sig : fin) });
+    d = sig;
+  }
+  return out;
+}
+
+function planificar(hist, cfg) {
+  const trabajos = [];
+  const anios = Object.keys(hist).map(Number).sort((a, b) => a - b);
+  anios.forEach((y) => {
+    const n = hist[y];
+    const ini = fechaISO(new Date(Math.max(Date.parse(cfg.ini), Date.UTC(y, 0, 1))));
+    const fin = fechaISO(new Date(Math.min(Date.parse(cfg.finExcl), Date.UTC(y + 1, 0, 1))));
+    let periodos = [{ ini, fin, imgs: n }];
+    if (n > LIMITE_FILAS / 2) periodos = partirPorMes({ ini, fin }).map((p) => Object.assign(p, { imgs: Math.ceil(n / 12) }));
+    periodos.forEach((p) => {
+      const tam = Math.max(1, Math.floor(LIMITE_FILAS / Math.max(1, p.imgs)));
+      for (let i = 0; i < elementos.length; i += tam) {
+        trabajos.push({ ini: p.ini, fin: p.fin, elems: elementos.slice(i, i + tam), peso: 0, intentos: 0 });
+      }
+    });
+  });
+  const peso = 1 / Math.max(1, trabajos.length);
+  trabajos.forEach((t) => { t.peso = peso; });
+  return trabajos;
+}
+
+let resultado = null;
+let calculando = false;
+
+async function calcular() {
+  if (!conectado) { log('Primero conecta con Earth Engine.', 'warn'); return; }
+  if (calculando) return;
+  if (!elementos.length) { log('Carga o dibuja al menos un punto o polígono.', 'warn'); return; }
+  const indices = indicesSeleccionados();
+  if (!indices.length) { log('Selecciona al menos un índice espectral.', 'warn'); return; }
+  const ini = $('f-ini').value, fin = $('f-fin').value;
+  if (!ini || !fin || fin < ini) { log('Rango de fechas inválido.', 'err'); return; }
+
+  const sensor = $('sensor').value;
+  const cfg = {
+    sensor, indices, ini,
+    finExcl: fechaISO(new Date(Date.parse(fin) + 86400000)),
+    fin,
+    nubes: Number($('nubes').value || 100),
+    reductor: $('reductor').value,
+    escala: SENSORES[sensor].escala
+  };
+
+  calculando = true;
+  const btn = $('btn-calcular');
+  btn.disabled = true; btn.textContent = 'Calculando…';
+  const barra = $('progreso'); barra.hidden = false;
+  const avance = (f) => { barra.firstElementChild.style.width = Math.round(f * 100) + '%'; };
+  avance(0.02);
+
+  try {
+    prepararGeometrias();
+    const geomTotal = fcDe(elementos).geometry().bounds(1);
+    const col = construirColeccion(cfg, geomTotal);
+
+    log('Contando imágenes disponibles…');
+    const hist = await evaluar(col.aggregate_histogram('yr'));
+    const totalImg = Object.values(hist).reduce((a, b) => a + b, 0);
+    if (!totalImg) throw new Error('No hay imágenes para ese sensor, período y nubosidad en el área de los elementos.');
+    log(`${totalImg} imágenes × ${elementos.length} elemento(s) · ${cfg.indices.length} índice(s).`);
+
+    const cola = planificar(hist, cfg);
+    const filas = [];
+    let hecho = 0, errores = 0;
+    avance(0.05);
+
+    const trabajar = async () => {
+      while (cola.length) {
+        const tr = cola.shift();
+        try {
+          const r = await evaluar(trabajoEE(col, cfg, tr));
+          r.features.forEach((f) => filas.push(f.properties));
+          hecho += tr.peso;
+        } catch (err) {
+          const msg = err.message || String(err);
+          if (/too many|rate|quota|429|concurrent/i.test(msg) && tr.intentos < 3) {
+            tr.intentos++;
+            await dormir(2500 * tr.intentos);
+            cola.push(tr);
+          } else if (tr.elems.length > 1) {
+            const m = Math.ceil(tr.elems.length / 2);
+            [tr.elems.slice(0, m), tr.elems.slice(m)].forEach((el) =>
+              cola.push(Object.assign({}, tr, { elems: el, peso: tr.peso / 2, intentos: 0 })));
+          } else {
+            const meses = partirPorMes(tr);
+            if (meses.length > 1) {
+              meses.forEach((p) => cola.push(Object.assign({}, tr, p, { peso: tr.peso / meses.length, intentos: 0 })));
+            } else {
+              errores++; hecho += tr.peso;
+              log(`Falló ${tr.ini} (elemento ${tr.elems[0].fid}): ${msg}`, 'err');
+            }
+          }
+        }
+        avance(0.05 + 0.95 * Math.min(1, hecho));
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCIA }, trabajar));
+
+    resultado = procesarFilas(filas, cfg);
+    log(`Listo: ${resultado.obs.length} observaciones válidas${errores ? ` (${errores} bloque(s) con error)` : ''}.`, errores ? 'warn' : 'ok');
+    if (!resultado.obs.length) log('Todas las observaciones quedaron enmascaradas (nubes) o fuera de cobertura. Prueba subir la nubosidad o ampliar el período.', 'warn');
+    if (elementoActivo == null || !elementos.some((e) => e.fid === elementoActivo)) elementoActivo = [...slotsElem.keys()][0] ?? elementos[0].fid;
+    $('barra').hidden = false;
+    renderVista();
+  } catch (err) {
+    log(err.message || String(err), 'err');
+  } finally {
+    calculando = false;
+    btn.disabled = false; btn.textContent = 'Calcular series de tiempo';
+    setTimeout(() => { barra.hidden = true; avance(0); }, 800);
+  }
+}
+$('btn-calcular').onclick = calcular;
+
+/* =====================================================================
+   Datos: depuración y agregación temporal
+   ===================================================================== */
+function procesarFilas(filas, cfg) {
+  // Promedia escenas del mismo día (pasadas solapadas o sensores distintos)
+  const grupos = new Map();
+  filas.forEach((p) => {
+    const dia = Math.floor(p.t / 86400000) * 86400000;
+    const clave = p.fid + '|' + dia;
+    let g = grupos.get(clave);
+    if (!g) { g = { fid: p.fid, t: dia, sensores: new Set(), suma: {}, n: {} }; grupos.set(clave, g); }
+    g.sensores.add(p.s);
+    cfg.indices.forEach((k) => {
+      const v = p[k];
+      if (v != null && isFinite(v)) { g.suma[k] = (g.suma[k] || 0) + v; g.n[k] = (g.n[k] || 0) + 1; }
+    });
+  });
+  const obs = [...grupos.values()].map((g) => {
+    const vals = {};
+    cfg.indices.forEach((k) => { vals[k] = g.n[k] ? g.suma[k] / g.n[k] : null; });
+    return { fid: g.fid, t: g.t, s: [...g.sensores].join('+'), vals };
+  }).sort((a, b) => a.t - b.t);
+  return { cfg, obs, colorIdx: new Map(cfg.indices.map((k) => [k, slotsIdx.has(k) ? slotsIdx.get(k) : cfg.indices.indexOf(k)])) };
+}
+
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Devuelve {x, y, n, s?}[] para un elemento e índice según la agregación. */
+function serie(fid, indice, modo) {
+  const datos = resultado.obs.filter((o) => o.fid === fid && o.vals[indice] != null);
+  if (modo === 'obs') return datos.map((o) => ({ x: o.t, y: o.vals[indice], n: 1, s: o.s }));
+  const grupos = new Map();
+  datos.forEach((o) => {
+    const d = new Date(o.t);
+    let x;
+    if (modo === 'mes') x = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 15);
+    else if (modo === 'anio') x = Date.UTC(d.getUTCFullYear(), 6, 1);
+    else x = d.getUTCMonth() + 1;
+    const g = grupos.get(x) || { suma: 0, n: 0 };
+    g.suma += o.vals[indice]; g.n++;
+    grupos.set(x, g);
+  });
+  return [...grupos.entries()].sort((a, b) => a[0] - b[0]).map(([x, g]) => ({ x, y: g.suma / g.n, n: g.n }));
+}
+
+function formatoX(v, modo, detalle) {
+  if (modo === 'clim') return MESES[Math.round(v) - 1] || '';
+  const d = new Date(v);
+  const y = d.getUTCFullYear(), m = MESES[d.getUTCMonth()];
+  if (modo === 'anio') return String(y);
+  if (modo === 'mes') return `${m} ${y}`;
+  if (detalle) return `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${y}`;
+  return `${m} ${y}`;
+}
+
+/* =====================================================================
+   Gráficos (Chart.js)
+   ===================================================================== */
+let graficos = [];
+let vista = 'indice';
+
+const cruz = {
+  id: 'cruz',
+  afterDatasetsDraw(chart) {
+    const act = chart.tooltip && chart.tooltip.getActiveElements();
+    if (!act || !act.length) return;
+    const x = act[0].element.x, { top, bottom } = chart.chartArea, ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = css('--muted'); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.restore();
+  }
+};
+const fondo = {
+  id: 'fondo',
+  beforeDraw(chart) {
+    const ctx = chart.ctx;
+    ctx.save(); ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = css('--panel'); ctx.fillRect(0, 0, chart.width, chart.height);
+    ctx.restore();
+  }
+};
+
+/** Marcas en el 1 de enero (series largas) o el 1 de cada mes (series cortas). */
+function ticksFecha(min, max, anual) {
+  const d0 = new Date(min), d1 = new Date(max);
+  const marcas = [];
+  if (anual) {
+    const a0 = d0.getUTCFullYear() + (d0.getUTCMonth() || d0.getUTCDate() > 1 ? 1 : 0);
+    const a1 = d1.getUTCFullYear();
+    const paso = Math.max(1, Math.ceil((a1 - a0 + 1) / 9));
+    for (let a = a0; a <= a1; a += paso) marcas.push({ value: Date.UTC(a, 0, 1) });
+  } else {
+    let y = d0.getUTCFullYear(), m = d0.getUTCMonth() + (d0.getUTCDate() > 1 ? 1 : 0);
+    const total = (d1.getUTCFullYear() - y) * 12 + d1.getUTCMonth() - m + 1;
+    const paso = Math.max(1, Math.ceil(total / 7));
+    for (let i = 0; i < total; i += paso) marcas.push({ value: Date.UTC(y, m + i, 1) });
+  }
+  return marcas.filter((t) => t.value >= min && t.value <= max);
+}
+
+function opcionesGrafico(modo, titulo) {
+  const muted = css('--muted'), grid = css('--grid'), texto = css('--text');
+  // Eje X: del inicio al fin del período consultado, con marcas en fechas reales
+  const lim = { min: Date.parse(resultado.cfg.ini), max: Date.parse(resultado.cfg.fin) };
+  const anual = modo === 'anio' || (lim.max - lim.min) / 31557600000 > 2.5;
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false, normalized: true,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    plugins: {
+      legend: { display: false },
+      title: { display: false, text: titulo },
+      tooltip: {
+        backgroundColor: css('--panel'), titleColor: texto, bodyColor: texto,
+        borderColor: css('--border'), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+        callbacks: {
+          title: (it) => it.length ? formatoX(it[0].parsed.x, modo, true) : '',
+          label: (it) => {
+            const p = it.raw;
+            const extra = modo === 'obs' ? (p.s ? ` · ${p.s}` : '') : ` · n=${p.n}`;
+            return ` ${it.dataset.label}: ${p.y.toFixed(3)}${extra}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: modo === 'clim'
+        ? { type: 'linear', min: 1, max: 12, ticks: { stepSize: 1, color: muted, callback: (v) => formatoX(v, 'clim') }, grid: { color: grid }, border: { color: grid } }
+        : { type: 'linear', min: lim.min, max: lim.max,
+            ticks: { color: muted, maxRotation: 0, autoSkip: false,
+              callback: (v) => (anual ? String(new Date(v).getUTCFullYear()) : formatoX(v, 'mes')) },
+            afterBuildTicks: (eje) => { eje.ticks = ticksFecha(eje.min, eje.max, anual); },
+            grid: { color: grid }, border: { color: grid } },
+      y: { ticks: { color: muted, maxTicksLimit: 6 }, grid: { color: grid }, border: { display: false } }
+    }
+  };
+}
+
+function dataset(label, puntos, c, modo) {
+  const pocos = puntos.length <= 40;
+  return {
+    label, data: puntos, borderColor: c, backgroundColor: c,
+    borderWidth: 2, tension: modo === 'obs' ? 0 : 0.25, spanGaps: true,
+    pointRadius: pocos ? 4 : 1.8, pointHoverRadius: 6,
+    pointBorderColor: css('--panel'), pointBorderWidth: pocos ? 1.5 : 0,
+    parsing: false
+  };
+}
+
+function leyendaHTML(items) {
+  return `<div class="leyenda">${items.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('')}</div>`;
+}
+
+function tarjeta(id, titulo, sub) {
+  return `<div class="tarjeta"><h3>${esc(titulo)} <small>${esc(sub || '')}</small>
+    <button data-png="${id}" title="Descargar PNG">PNG</button></h3><div class="lienzo"><canvas id="${id}"></canvas></div></div>`;
+}
+
+function destruirGraficos() { graficos.forEach((g) => g.destroy()); graficos = []; }
+
+function renderVista() {
+  if (!resultado) return;
+  destruirGraficos();
+  const modo = $('agregacion').value;
+  const cfg = resultado.cfg;
+  const s = SENSORES[cfg.sensor];
+  $('resumen').textContent = `${s.nombre} · ${cfg.ini} a ${cfg.fin} · nubes ≤ ${cfg.nubes}% · ${resultado.obs.length} observaciones · ${elementos.length} elemento(s)`;
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.vista === vista)));
+  $('sel-elemento').hidden = vista !== 'elemento';
+  $('agregacion').hidden = vista === 'tabla';
+  const cont = $('vista');
+
+  if (vista === 'tabla') { cont.innerHTML = tablaHTML(); return; }
+
+  const visibles = elementos.filter((e) => slotsElem.has(e.fid));
+
+  if (vista === 'indice') {
+    if (!visibles.length) {
+      cont.innerHTML = '<div class="vacio"><strong>Ningún elemento visible</strong>Marca hasta 8 elementos en la lista del panel o haz clic sobre ellos en el mapa.</div>';
+      return;
+    }
+    const items = visibles.map((e) => [nombreDe(e), color(slotsElem.get(e.fid))]);
+    cont.innerHTML = leyendaHTML(items) + '<div class="grilla">' +
+      cfg.indices.map((k, i) => tarjeta('g' + i, k, INDICES[k].desc)).join('') + '</div>';
+    cfg.indices.forEach((k, i) => {
+      const ds = visibles.map((e) => dataset(nombreDe(e), serie(e.fid, k, modo), color(slotsElem.get(e.fid)), modo));
+      graficos.push(new Chart($('g' + i), { type: 'line', data: { datasets: ds }, options: opcionesGrafico(modo, k), plugins: [cruz, fondo] }));
+    });
+  } else {
+    // Por elemento: un gráfico con todos los índices del elemento elegido
+    const sel = $('sel-elemento');
+    sel.innerHTML = '';
+    elementos.forEach((e) => sel.add(new Option(nombreDe(e), String(e.fid))));
+    if (!elementos.some((e) => e.fid === elementoActivo)) elementoActivo = elementos[0] && elementos[0].fid;
+    sel.value = String(elementoActivo);
+    const e = elementos.find((x) => x.fid === elementoActivo);
+    if (!e) { cont.innerHTML = '<div class="vacio">Sin elementos.</div>'; return; }
+    const items = cfg.indices.map((k) => [k, color(resultado.colorIdx.get(k))]);
+    cont.innerHTML = leyendaHTML(items) + '<div class="grilla" style="grid-template-columns:1fr">' +
+      tarjeta('g0', nombreDe(e), `${e.tipo} · ${cfg.indices.length} índice(s)`) + '</div>';
+    cont.querySelector('.lienzo').style.height = '360px';
+    const ds = cfg.indices.map((k) => dataset(k, serie(e.fid, k, modo), color(resultado.colorIdx.get(k)), modo));
+    graficos.push(new Chart($('g0'), { type: 'line', data: { datasets: ds }, options: opcionesGrafico(modo, nombreDe(e)), plugins: [cruz, fondo] }));
+  }
+
+  cont.querySelectorAll('[data-png]').forEach((b) => {
+    b.onclick = () => {
+      const g = graficos.find((x) => x.canvas.id === b.dataset.png);
+      if (!g) return;
+      const titulo = b.parentElement.firstChild.textContent.trim();
+      const a = document.createElement('a');
+      a.href = g.toBase64Image('image/png', 1);
+      a.download = `serie_${titulo.replace(/[^\w\-]+/g, '_')}_${modo}.png`;
+      a.click();
+    };
+  });
+}
+
+function tablaHTML() {
+  const cfg = resultado.cfg;
+  const f = (v) => (v == null ? '—' : v.toFixed(3));
+  const fd = (t) => formatoX(t, 'obs', true);
+  let filas = '';
+  elementos.forEach((e) => {
+    cfg.indices.forEach((k) => {
+      const d = resultado.obs.filter((o) => o.fid === e.fid && o.vals[k] != null);
+      if (!d.length) { filas += `<tr><td>${esc(nombreDe(e))}</td><td>${k}</td><td>0</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`; return; }
+      const v = d.map((o) => o.vals[k]);
+      const media = v.reduce((a, b) => a + b, 0) / v.length;
+      const de = Math.sqrt(v.reduce((a, b) => a + (b - media) ** 2, 0) / v.length);
+      const ult = d[d.length - 1];
+      filas += `<tr><td>${esc(nombreDe(e))}</td><td>${k}</td><td>${v.length}</td><td>${f(media)}</td><td>${f(de)}</td>
+        <td>${f(Math.min(...v))}</td><td>${f(Math.max(...v))}</td><td>${fd(d[0].t)}</td><td>${fd(ult.t)} · ${f(ult.vals[k])}</td></tr>`;
+    });
+  });
+  return `<div class="tabla-envoltura"><table>
+    <thead><tr><th>Elemento</th><th>Índice</th><th>Obs.</th><th>Media</th><th>Desv. est.</th><th>Mín.</th><th>Máx.</th><th>Primera</th><th>Última · valor</th></tr></thead>
+    <tbody>${filas}</tbody></table></div>`;
+}
+
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => { vista = b.dataset.vista; renderVista(); }));
+$('agregacion').addEventListener('change', renderVista);
+$('sel-elemento').addEventListener('change', (ev) => {
+  elementoActivo = Number(ev.target.value);
+  refrescarEstilos();
+  renderVista();
+});
+
+/* ---------- Exportar CSV (formato largo) ---------- */
+$('btn-csv').onclick = () => {
+  if (!resultado) return;
+  const cfg = resultado.cfg;
+  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const lineas = [['fid', 'elemento', 'tipo', 'fecha', 'sensor'].concat(cfg.indices).join(',')];
+  const porFid = new Map(elementos.map((e) => [e.fid, e]));
+  resultado.obs.forEach((o) => {
+    const e = porFid.get(o.fid);
+    lineas.push([o.fid, q(e ? nombreDe(e) : o.fid), e ? e.tipo : '', new Date(o.t).toISOString().slice(0, 10), o.s]
+      .concat(cfg.indices.map((k) => (o.vals[k] == null ? '' : o.vals[k].toFixed(5)))).join(','));
+  });
+  const blob = new Blob(['﻿' + lineas.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `series_${cfg.sensor}_${cfg.ini}_${cfg.fin}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+/* ---------- Redibujar al cambiar el tema del sistema ---------- */
+try {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    refrescarEstilos(); renderLista(); renderVista();
+  });
+} catch (e) { /* navegadores antiguos */ }
+
+renderLista();
+</script>
+</body>
+</html>

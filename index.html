@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GEE Swipe Comparador</title>
+<meta name="description" content="Comparador multitemporal tipo swipe con Google Earth Engine: Landsat 5/7/8/9 y Sentinel-2.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --text: #1b2330;
+    --muted: #5f6b7a;
+    --border: #dde3ea;
+    --accent: #0f6cbd;
+    --accent-text: #ffffff;
+    --left: #e0782b;
+    --right: #2a9d8f;
+    --ok: #2e7d32;
+    --warn: #b26a00;
+    --err: #c62828;
+    --input: #f8fafc;
+    --shadow: 0 2px 10px rgba(16, 24, 40, .12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141a; --panel: #161d26; --text: #e6edf3; --muted: #9aa7b4;
+      --border: #2a3542; --accent: #4ea1ff; --accent-text: #0b1220;
+      --input: #1c2530; --shadow: 0 2px 12px rgba(0, 0, 0, .5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141a; --panel: #161d26; --text: #e6edf3; --muted: #9aa7b4;
+    --border: #2a3542; --accent: #4ea1ff; --accent-text: #0b1220;
+    --input: #1c2530; --shadow: 0 2px 12px rgba(0, 0, 0, .5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: flex; background: var(--bg); color: var(--text);
+    font: 14px/1.45 Inter, system-ui, sans-serif;
+  }
+
+  /* ---------- Panel ---------- */
+  #panel {
+    width: 360px; flex-shrink: 0; height: 100vh; overflow-y: auto;
+    background: var(--panel); border-right: 1px solid var(--border);
+    padding: 18px 16px 24px;
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  .nav { font-size: 12.5px; margin: -6px 0 12px; }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  header p { margin: 2px 0 14px; color: var(--muted); font-size: 12.5px; }
+
+  section { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  section h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    margin: 0 0 10px; color: var(--muted); display: flex; align-items: center; gap: 8px;
+  }
+  section h2 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .lado-izq { border-top: 3px solid var(--left); }
+  .lado-der { border-top: 3px solid var(--right); }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--input); color: var(--text); font: inherit;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .fila { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .info { font-size: 12px; margin-top: 8px; color: var(--text); min-height: 1em; }
+
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 8px;
+    padding: 8px 12px; border: 1px solid var(--border); background: var(--input); color: var(--text);
+  }
+  button:hover { filter: brightness(.97); }
+  button.primario { background: var(--accent); color: var(--accent-text); border-color: var(--accent); width: 100%; padding: 10px; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .botones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .botones button { flex: 1; font-size: 12.5px; padding: 7px 8px; }
+
+  .estado { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+  .estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .estado.ok::before { background: var(--ok); }
+  .estado.warn::before { background: var(--warn); }
+  .estado.err::before { background: var(--err); }
+
+  #log {
+    font-size: 11.5px; color: var(--muted); max-height: 140px; overflow-y: auto;
+    border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 8px;
+  }
+  #log div { margin-bottom: 3px; }
+  #log .err { color: var(--err); }
+  #log .warn { color: var(--warn); }
+  #log .ok { color: var(--ok); }
+  [hidden] { display: none !important; }
+
+  /* ---------- Mapa ---------- */
+  #map { flex: 1; height: 100vh; position: relative; }
+
+  #swipe {
+    position: absolute; top: 0; bottom: 0; left: 50%; width: 0; z-index: 800; pointer-events: none;
+  }
+  #swipe .linea {
+    position: absolute; top: 0; bottom: 0; left: -1.5px; width: 3px;
+    background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .6);
+  }
+  #swipe .manija {
+    position: absolute; top: 50%; left: -20px; width: 40px; height: 40px; margin-top: -20px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 8px rgba(0, 0, 0, .45);
+    display: flex; align-items: center; justify-content: center; cursor: ew-resize;
+    pointer-events: auto; touch-action: none; color: #1b2330; font-size: 13px; font-weight: 700;
+    user-select: none;
+  }
+
+  .etiqueta-mapa {
+    position: absolute; top: 10px; z-index: 790; max-width: 42%;
+    background: rgba(15, 20, 26, .78); color: #fff; padding: 6px 10px; border-radius: 8px;
+    font-size: 12px; line-height: 1.3; box-shadow: var(--shadow); pointer-events: none;
+  }
+  #etq-izq { left: 56px; border-left: 4px solid var(--left); }
+  #etq-der { right: 10px; border-right: 4px solid var(--right); text-align: right; }
+  .etiqueta-mapa small { opacity: .8; display: block; }
+
+  @media (max-width: 820px) {
+    body { flex-direction: column; height: auto; }
+    #map { order: -1; height: 62vh; flex: none; width: 100%; }
+    #panel { width: 100%; height: auto; border-right: none; border-top: 1px solid var(--border); padding: 16px; }
+    .etiqueta-mapa { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<aside id="panel">
+  <header>
+    <h1>Comparador multitemporal</h1>
+    <p>Google Earth Engine · Landsat 5/7/8/9 y Sentinel-2 · Swipe</p>
+  </header>
+  <nav class="nav"><a href="series.html">Series de tiempo de índices →</a></nav>
+
+  <!-- 1. Conexión -->
+  <section>
+    <h2>1 · Conexión a Earth Engine</h2>
+    <div id="bloque-cliente">
+      <label for="client-id">OAuth Client ID</label>
+      <input id="client-id" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off">
+    </div>
+    <label for="proyecto">Proyecto Cloud registrado en Earth Engine</label>
+    <input id="proyecto" placeholder="mi-proyecto-gee" autocomplete="off">
+    <div class="botones">
+      <button id="btn-conectar">Conectar</button>
+      <button id="btn-login" hidden>Iniciar sesión con Google</button>
+    </div>
+    <div id="estado" class="estado">Sin conectar</div>
+  </section>
+
+  <!-- 2. Área -->
+  <section>
+    <h2>2 · Área de interés</h2>
+    <div class="hint">Dibuja un polígono o rectángulo con las herramientas del mapa, o carga un GeoJSON. Si no hay área, se usa la vista actual.</div>
+    <div class="botones">
+      <button id="btn-geojson">Cargar GeoJSON</button>
+      <button id="btn-zoom">Zoom al área</button>
+      <button id="btn-limpiar">Limpiar</button>
+    </div>
+    <input type="file" id="archivo-geojson" accept=".geojson,.json,application/geo+json" hidden>
+  </section>
+
+  <!-- 3 y 4. Lados (se generan desde JS) -->
+  <div id="lados"></div>
+
+  <button id="btn-generar" class="primario" disabled>Generar comparación</button>
+  <div id="log"></div>
+</aside>
+
+<div id="map"></div>
+
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@google/earthengine@1.7.43/build/ee_api_js.js"></script>
+<script>
+/* Configuración compartida: ver config.js */
+const CONFIG = Object.assign({ CLIENT_ID: '', PROJECT: '' }, window.GEE_CONFIG || {});
+
+/* ---------- Almacenamiento local seguro ---------- */
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin storage */ } }
+};
+
+/* ---------- Sensores ---------- */
+const HOY = new Date().toISOString().slice(0, 10);
+const BANDAS = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'];
+const B_L57 = ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'];
+const B_L89 = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'];
+const B_S2  = ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'];
+
+const SENSORES = {
+  L5: { nombre: 'Landsat 5 TM', id: 'LANDSAT/LT05/C02/T1_L2', bandas: B_L57, tipo: 'landsat',
+        ini: '1984-03-16', fin: '2012-05-05', res: '30 m' },
+  L7: { nombre: 'Landsat 7 ETM+', id: 'LANDSAT/LE07/C02/T1_L2', bandas: B_L57, tipo: 'landsat',
+        ini: '1999-05-28', fin: HOY, res: '30 m', nota: 'Franjas SLC-off desde jun-2003.' },
+  L8: { nombre: 'Landsat 8 OLI', id: 'LANDSAT/LC08/C02/T1_L2', bandas: B_L89, tipo: 'landsat',
+        ini: '2013-03-18', fin: HOY, res: '30 m' },
+  L9: { nombre: 'Landsat 9 OLI-2', id: 'LANDSAT/LC09/C02/T1_L2', bandas: B_L89, tipo: 'landsat',
+        ini: '2021-10-31', fin: HOY, res: '30 m' },
+  S2: { nombre: 'Sentinel-2 L2A', id: 'COPERNICUS/S2_SR_HARMONIZED', bandas: B_S2, tipo: 's2',
+        ini: '2017-03-28', fin: HOY, res: '10 m' }
+};
+
+const VIS = {
+  rgb:   { nombre: 'Color real', params: { bands: ['red', 'green', 'blue'], min: 0, max: 0.25, gamma: 1.4 } },
+  falso: { nombre: 'Falso color (SWIR1 / NIR / Rojo)', params: { bands: ['swir1', 'nir', 'red'], min: 0, max: 0.4, gamma: 1.2 } },
+  infra: { nombre: 'Infrarrojo color (NIR / Rojo / Verde)', params: { bands: ['nir', 'red', 'green'], min: 0, max: 0.4, gamma: 1.2 } },
+  ndwi:  { nombre: 'NDWI (agua)', indice: ['green', 'nir'],
+           params: { min: -0.5, max: 0.5, palette: ['8c510a', 'dfc27d', 'f6e8c3', 'c7eae5', '4393c3', '08306b'] } },
+  ndvi:  { nombre: 'NDVI (vegetación)', indice: ['nir', 'red'],
+           params: { min: -0.1, max: 0.8, palette: ['a50026', 'f46d43', 'fee08b', 'd9ef8b', '66bd63', '006837'] } }
+};
+
+const DEFAULTS = {
+  izq: { titulo: 'Lado izquierdo', sensor: 'L5', ini: '2010-01-01', fin: '2010-12-31', metodo: 'mediana', vis: 'rgb', nubes: 60 },
+  der: { titulo: 'Lado derecho',   sensor: 'S2', ini: '2026-10-14', fin: '2026-10-14', metodo: 'escena',  vis: 'rgb', nubes: 100 }
+};
+
+/* ---------- Utilidades UI ---------- */
+const $ = (id) => document.getElementById(id);
+function log(msg, tipo) {
+  const d = document.createElement('div');
+  if (tipo) d.className = tipo;
+  d.textContent = new Date().toLocaleTimeString('es-CL', { hour12: false }) + ' · ' + msg;
+  $('log').prepend(d);
+}
+function setEstado(texto, tipo) {
+  const e = $('estado');
+  e.textContent = texto;
+  e.className = 'estado' + (tipo ? ' ' + tipo : '');
+}
+
+/* ---------- Construir controles de cada lado ---------- */
+function crearLado(lado) {
+  const d = DEFAULTS[lado];
+  const sec = document.createElement('section');
+  sec.className = 'lado-' + lado;
+  const opcSensor = Object.entries(SENSORES).map(([k, s]) => `<option value="${k}">${s.nombre} (${s.res})</option>`).join('');
+  const opcVis = Object.entries(VIS).map(([k, v]) => `<option value="${k}">${v.nombre}</option>`).join('');
+  sec.innerHTML = `
+    <h2><span class="dot" style="background:var(--${lado === 'izq' ? 'left' : 'right'})"></span>${d.titulo}</h2>
+    <label for="${lado}-sensor">Sensor</label>
+    <select id="${lado}-sensor">${opcSensor}</select>
+    <div class="fila">
+      <div><label for="${lado}-ini">Desde</label><input type="date" id="${lado}-ini"></div>
+      <div><label for="${lado}-fin">Hasta</label><input type="date" id="${lado}-fin"></div>
+    </div>
+    <div class="fila">
+      <div>
+        <label for="${lado}-metodo">Método</label>
+        <select id="${lado}-metodo">
+          <option value="mediana">Compuesto (mediana)</option>
+          <option value="escena">Escena menos nubosa</option>
+        </select>
+      </div>
+      <div><label for="${lado}-nubes">Nubes máx. escena (%)</label><input type="number" id="${lado}-nubes" min="0" max="100" step="5"></div>
+    </div>
+    <label for="${lado}-vis">Visualización</label>
+    <select id="${lado}-vis">${opcVis}</select>
+    <div class="hint" id="${lado}-disp"></div>
+    <div class="info" id="${lado}-info"></div>`;
+  $('lados').appendChild(sec);
+
+  $(lado + '-sensor').value = d.sensor;
+  $(lado + '-ini').value = d.ini;
+  $(lado + '-fin').value = d.fin;
+  $(lado + '-metodo').value = d.metodo;
+  $(lado + '-vis').value = d.vis;
+  $(lado + '-nubes').value = d.nubes;
+
+  const actualizarDisp = () => {
+    const s = SENSORES[$(lado + '-sensor').value];
+    $(lado + '-ini').min = $(lado + '-fin').min = s.ini;
+    $(lado + '-ini').max = $(lado + '-fin').max = s.fin;
+    $(lado + '-disp').textContent = `Disponible: ${s.ini} a ${s.fin === HOY ? 'hoy' : s.fin}. ${s.nota || ''}`;
+  };
+  $(lado + '-sensor').addEventListener('change', actualizarDisp);
+  actualizarDisp();
+}
+crearLado('izq');
+crearLado('der');
+
+function leerCfg(lado) {
+  return {
+    sensor: $(lado + '-sensor').value,
+    ini: $(lado + '-ini').value,
+    fin: $(lado + '-fin').value,
+    metodo: $(lado + '-metodo').value,
+    vis: $(lado + '-vis').value,
+    nubes: Number($(lado + '-nubes').value || 100)
+  };
+}
+
+/* ---------- Mapa ---------- */
+const map = L.map('map', { zoomControl: true }).setView([-33.84, -70.925], 12);
+
+const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, attribution: 'Imágenes © Esri'
+}).addTo(map);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+});
+L.control.layers({ 'Esri satélite': esri, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(map);
+L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+
+// Panes para cada lado del swipe (sobre el mapa base, bajo los dibujos)
+const paneIzq = map.createPane('izq');
+const paneDer = map.createPane('der');
+paneIzq.style.zIndex = 250;
+paneDer.style.zIndex = 251;
+const capas = { izq: null, der: null };
+
+/* ---------- Dibujo del área ---------- */
+L.drawLocal.draw.toolbar.buttons.polygon = 'Dibujar polígono';
+L.drawLocal.draw.toolbar.buttons.rectangle = 'Dibujar rectángulo';
+L.drawLocal.draw.toolbar.actions.text = 'Cancelar';
+L.drawLocal.draw.toolbar.finish.text = 'Terminar';
+L.drawLocal.draw.toolbar.undo.text = 'Borrar último punto';
+L.drawLocal.edit.toolbar.buttons.edit = 'Editar área';
+L.drawLocal.edit.toolbar.buttons.remove = 'Eliminar área';
+L.drawLocal.edit.toolbar.actions.save.text = 'Guardar';
+L.drawLocal.edit.toolbar.actions.cancel.text = 'Cancelar';
+L.drawLocal.edit.toolbar.actions.clearAll.text = 'Borrar todo';
+
+const estiloAOI = { color: '#ffd400', weight: 2, fill: false, dashArray: '6 4' };
+const dibujos = new L.FeatureGroup().addTo(map);
+map.addControl(new L.Control.Draw({
+  position: 'topleft',
+  edit: { featureGroup: dibujos, remove: true },
+  draw: {
+    polygon: { allowIntersection: false, showArea: false, shapeOptions: estiloAOI },
+    rectangle: { showArea: false, shapeOptions: estiloAOI },
+    polyline: false, circle: false, marker: false, circlemarker: false
+  }
+}));
+map.on(L.Draw.Event.CREATED, (e) => {
+  dibujos.clearLayers();
+  dibujos.addLayer(e.layer);
+  log('Área de interés actualizada.');
+});
+
+// Área por defecto: Laguna de Aculeo
+dibujos.addLayer(L.rectangle([[-33.89, -71.00], [-33.79, -70.85]], estiloAOI));
+
+$('btn-limpiar').onclick = () => { dibujos.clearLayers(); log('Área eliminada; se usará la vista actual.', 'warn'); };
+$('btn-zoom').onclick = () => { if (dibujos.getLayers().length) map.fitBounds(dibujos.getBounds(), { padding: [20, 20] }); };
+$('btn-geojson').onclick = () => $('archivo-geojson').click();
+$('archivo-geojson').onchange = (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    try {
+      const data = JSON.parse(lector.result);
+      const capa = L.geoJSON(data, {
+        filter: (ft) => ft.geometry && /Polygon/.test(ft.geometry.type),
+        style: estiloAOI
+      });
+      if (!capa.getLayers().length) throw new Error('El archivo no contiene polígonos.');
+      dibujos.clearLayers();
+      capa.eachLayer((l) => dibujos.addLayer(l));
+      map.fitBounds(dibujos.getBounds(), { padding: [20, 20] });
+      log(`GeoJSON cargado: ${f.name}`, 'ok');
+    } catch (err) {
+      log('No se pudo leer el GeoJSON: ' + err.message, 'err');
+    }
+  };
+  lector.readAsText(f);
+  ev.target.value = '';
+};
+
+function obtenerGeom() {
+  const fc = dibujos.toGeoJSON();
+  if (!fc.features.length) {
+    const b = map.getBounds();
+    log('Sin área dibujada: se usa la vista actual del mapa.', 'warn');
+    return ee.Geometry.Rectangle([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], null, false);
+  }
+  const geoms = fc.features.map((ft) => ee.Geometry(ft.geometry, null, false));
+  return geoms.length === 1 ? geoms[0] : ee.FeatureCollection(geoms.map((g) => ee.Feature(g))).geometry();
+}
+
+/* ---------- Swipe ---------- */
+let ratio = 0.5;
+const swipe = document.createElement('div');
+swipe.id = 'swipe';
+swipe.innerHTML = '<div class="linea"></div><div class="manija" title="Arrastra para comparar">◀▶</div>';
+map.getContainer().appendChild(swipe);
+L.DomEvent.disableClickPropagation(swipe);
+
+['izq', 'der'].forEach((lado) => {
+  const e = document.createElement('div');
+  e.id = 'etq-' + lado;
+  e.className = 'etiqueta-mapa';
+  e.innerHTML = lado === 'izq' ? '◀ Lado izquierdo' : 'Lado derecho ▶';
+  map.getContainer().appendChild(e);
+});
+
+function actualizarClip() {
+  const size = map.getSize();
+  const nw = map.containerPointToLayerPoint([0, 0]);
+  const se = map.containerPointToLayerPoint(size);
+  const x = map.containerPointToLayerPoint([size.x * ratio, 0]).x;
+  paneIzq.style.clip = `rect(${nw.y}px, ${x}px, ${se.y}px, ${nw.x}px)`;
+  paneDer.style.clip = `rect(${nw.y}px, ${se.x}px, ${se.y}px, ${x}px)`;
+  swipe.style.left = (size.x * ratio) + 'px';
+}
+map.on('move zoom resize', actualizarClip);
+actualizarClip();
+
+const manija = swipe.querySelector('.manija');
+let arrastrando = false;
+manija.addEventListener('pointerdown', (e) => {
+  arrastrando = true;
+  manija.setPointerCapture(e.pointerId);
+  map.dragging.disable();
+  e.preventDefault();
+});
+manija.addEventListener('pointermove', (e) => {
+  if (!arrastrando) return;
+  const r = map.getContainer().getBoundingClientRect();
+  ratio = Math.min(0.98, Math.max(0.02, (e.clientX - r.left) / r.width));
+  actualizarClip();
+});
+const soltar = () => { if (arrastrando) { arrastrando = false; map.dragging.enable(); } };
+manija.addEventListener('pointerup', soltar);
+manija.addEventListener('pointercancel', soltar);
+
+/* ---------- Earth Engine: autenticación ---------- */
+let conectado = false;
+
+$('client-id').value = CONFIG.CLIENT_ID || ls.get('gee_client_id') || '';
+$('proyecto').value = ls.get('gee_project') || CONFIG.PROJECT || '';
+if (CONFIG.CLIENT_ID) $('bloque-cliente').hidden = true;
+
+function fallo(err) {
+  const msg = (err && (err.message || err)) || 'error desconocido';
+  setEstado('Error de conexión', 'err');
+  log('Error de autenticación: ' + msg, 'err');
+}
+
+function inicializar() {
+  const proyecto = $('proyecto').value.trim();
+  setEstado('Inicializando Earth Engine…', 'warn');
+  ee.initialize(null, null, () => {
+    conectado = true;
+    $('btn-login').hidden = true;
+    $('btn-generar').disabled = false;
+    setEstado('Conectado · ' + proyecto, 'ok');
+    log('Earth Engine listo.', 'ok');
+    generar();
+  }, fallo, null, proyecto);
+}
+
+function conectar() {
+  const clientId = $('client-id').value.trim();
+  const proyecto = $('proyecto').value.trim();
+  if (!clientId || !proyecto) {
+    setEstado('Falta Client ID o proyecto', 'err');
+    return;
+  }
+  ls.set('gee_client_id', clientId);
+  ls.set('gee_project', proyecto);
+  setEstado('Verificando sesión…', 'warn');
+  ee.data.authenticateViaOauth(clientId, inicializar, fallo, null, () => {
+    // No hay sesión previa: el popup debe abrirse desde un clic del usuario
+    $('btn-login').hidden = false;
+    setEstado('Inicia sesión con tu cuenta Google', 'warn');
+  });
+}
+
+$('btn-conectar').onclick = conectar;
+$('btn-login').onclick = () => ee.data.authenticateViaPopup(inicializar, fallo);
+if ($('client-id').value && $('proyecto').value) conectar();
+
+/* ---------- Earth Engine: procesamiento ---------- */
+const evaluar = (obj) => new Promise((res, rej) => obj.evaluate((r, e) => (e ? rej(new Error(e)) : res(r))));
+const obtenerMapa = (img, vis) => new Promise((res, rej) => img.getMap(vis, (m, e) => (e ? rej(new Error(e)) : res(m))));
+
+function preparar(img, s, enmascarar) {
+  if (s.tipo === 's2') {
+    let sr = img.select(s.bandas, BANDAS).divide(10000);
+    if (enmascarar) {
+      const scl = img.select('SCL'); // 3 sombra, 8-9 nubes, 10 cirros
+      sr = sr.updateMask(scl.neq(3).and(scl.neq(8)).and(scl.neq(9)).and(scl.neq(10)));
+    }
+    return sr;
+  }
+  let sr = img.select(s.bandas, BANDAS).multiply(0.0000275).add(-0.2);
+  if (enmascarar) {
+    const qa = img.select('QA_PIXEL'); // bits 0–4: relleno, nube dilatada, cirros, nube, sombra
+    sr = sr.updateMask(qa.bitwiseAnd(31).eq(0)).updateMask(img.select('QA_RADSAT').eq(0));
+  }
+  return sr;
+}
+
+function etiqueta(lado, texto, sub) {
+  $('etq-' + lado).innerHTML = (lado === 'izq' ? '◀ ' : '') + texto + (lado === 'der' ? ' ▶' : '') +
+    (sub ? `<small>${sub}</small>` : '');
+}
+
+async function generarLado(lado, geom) {
+  const cfg = leerCfg(lado);
+  const s = SENSORES[cfg.sensor];
+  const info = $(lado + '-info');
+  if (!cfg.ini || !cfg.fin || cfg.fin < cfg.ini) throw new Error('Rango de fechas inválido.');
+
+  info.textContent = 'Buscando escenas…';
+  const propNubes = s.tipo === 's2' ? 'CLOUDY_PIXEL_PERCENTAGE' : 'CLOUD_COVER';
+  const col = ee.ImageCollection(s.id)
+    .filterBounds(geom)
+    .filterDate(cfg.ini, ee.Date(cfg.fin).advance(1, 'day'))
+    .filter(ee.Filter.lte(propNubes, cfg.nubes));
+
+  const n = await evaluar(col.size());
+  if (n === 0) throw new Error(`Sin escenas de ${s.nombre} entre ${cfg.ini} y ${cfg.fin} (nubes ≤ ${cfg.nubes}%).`);
+
+  let img, detalle, subtitulo;
+  if (cfg.metodo === 'mediana') {
+    img = col.map((i) => preparar(i, s, true)).median();
+    detalle = `Mediana de ${n} escena${n > 1 ? 's' : ''}.`;
+    subtitulo = `${cfg.ini} → ${cfg.fin} · mediana (${n})`;
+  } else {
+    const mejor = ee.Image(col.sort(propNubes).first());
+    const meta = await evaluar(ee.Dictionary({
+      fecha: ee.Date(mejor.get('system:time_start')).format('YYYY-MM-dd'),
+      nubes: mejor.get(propNubes)
+    }));
+    img = preparar(mejor, s, false);
+    const nub = Math.round(Number(meta.nubes) * 10) / 10;
+    detalle = `Escena del ${meta.fecha} · ${nub}% nubes (de ${n} disponibles).`;
+    subtitulo = `${meta.fecha} · ${nub}% nubes`;
+  }
+
+  img = img.clip(geom);
+  const v = VIS[cfg.vis];
+  if (v.indice) img = img.normalizedDifference(v.indice);
+
+  info.textContent = 'Generando teselas…';
+  const mapa = await obtenerMapa(img, v.params);
+
+  if (capas[lado]) map.removeLayer(capas[lado]);
+  capas[lado] = L.tileLayer(mapa.urlFormat, { pane: lado, maxZoom: 19, attribution: 'Google Earth Engine' })
+    .on('loading', () => { info.textContent = detalle + ' Cargando…'; })
+    .on('load', () => { info.textContent = detalle; })
+    .addTo(map);
+
+  info.textContent = detalle;
+  etiqueta(lado, `${s.nombre} · ${v.nombre.split(' (')[0]}`, subtitulo);
+  log(`${lado === 'izq' ? 'Izquierda' : 'Derecha'}: ${s.nombre} — ${detalle}`, 'ok');
+}
+
+async function generar() {
+  if (!conectado) { log('Primero conecta con Earth Engine.', 'warn'); return; }
+  const btn = $('btn-generar');
+  btn.disabled = true;
+  btn.textContent = 'Procesando…';
+  const geom = obtenerGeom();
+  const res = await Promise.allSettled([generarLado('izq', geom), generarLado('der', geom)]);
+  res.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      const lado = i === 0 ? 'izq' : 'der';
+      $(lado + '-info').textContent = r.reason.message;
+      log(r.reason.message, 'err');
+    }
+  });
+  btn.disabled = false;
+  btn.textContent = 'Generar comparación';
+  actualizarClip();
+}
+$('btn-generar').onclick = generar;
+</script>
+</body>
+</html>
