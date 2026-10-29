@@ -5,6 +5,6 @@
    Si dejas CLIENT_ID vacío, la app lo pide en el panel.
    ===================================================================== */
 window.GEE_CONFIG = {
-  CLIENT_ID: '73618793376-jru0r800r1s01gre5gjj1hk7nohdhet1.apps.googleusercontent.com',
-  PROJECT: 'ee-danielgonzalezba88'
+  CLIENT_ID: '',
+  PROJECT: ''
 };
